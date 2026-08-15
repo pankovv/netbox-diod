@@ -21,6 +21,9 @@ with SNMPv3.
 8. Creates one deduplicated NetBox Circuit per resolved neighbor link, with
    A/Z terminations inherited from the endpoint device sites and cables each
    termination to its device interface for NetBox Topology Views.
+   If one physical interface has multiple neighbors, additional links use
+   stable dedicated topology interfaces because NetBox permits one cable per
+   interface and does not allow cables on interfaces of type `virtual`.
 9. Stores progress and an event log for every background discovery run.
 
 Credentials are encrypted at rest with Fernet. The encryption key is kept in

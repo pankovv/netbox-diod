@@ -551,16 +551,36 @@ class DiscoveryService:
             termination.refresh_from_db(fields=("cable",))
             if endpoint.cable_id == termination.cable_id and endpoint.cable_id:
                 continue
-            if endpoint.cable_id or termination.cable_id:
-                self.log(
-                    f"Circuit {cid} cable conflict at {name} / "
-                    f"{interface_name}; existing cable was preserved.",
-                    "warning",
-                )
+            if termination.cable_id:
                 continue
+            cable_endpoint = endpoint
+            if endpoint.cable_id:
+                topology_name = f"{cid}-{side}"
+                cable_endpoint, _ = Interface.objects.get_or_create(
+                    device=endpoint.device, name=topology_name,
+                    defaults={
+                        "type": "other", "enabled": True,
+                        "description": (
+                            f"Discovered topology endpoint for "
+                            f"{interface_name}"
+                        )[:200],
+                    },
+                )
+                cable_endpoint.refresh_from_db(fields=("cable",))
+                if cable_endpoint.cable_id:
+                    self.log(
+                        f"Circuit {cid} virtual topology endpoint conflict "
+                        f"at {name}; existing cable was preserved.",
+                        "warning",
+                    )
+                    continue
+                self.log(
+                    f"Circuit {cid} uses virtual topology endpoint at "
+                    f"{name} because {interface_name} already has a cable.",
+                )
             cable = Cable(
                 label=f"{cid}-{side}", status="connected", tenant=tenant,
-                a_terminations=[endpoint], b_terminations=[termination],
+                a_terminations=[cable_endpoint], b_terminations=[termination],
             )
             cable.full_clean()
             cable.save()
