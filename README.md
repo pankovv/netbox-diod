@@ -15,7 +15,7 @@ with SNMPv3.
    operator.
 6. Creates or updates a device, inherits tenant and site from its prefix,
    assigns the existing IP to the discovered interface, and makes it Primary
-   IPv4.
+   IPv4. Discovered devices inherit the `discovery` tag for topology filters.
 7. Synchronizes manufacturer/model from ENTITY-MIB, all IF-MIB interfaces,
    and CDP/LLDP neighbor data.
 8. Creates one deduplicated NetBox Circuit per resolved neighbor link, with

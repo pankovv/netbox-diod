@@ -16,6 +16,7 @@ from dcim.models import (
 from circuits.models import Circuit, CircuitTermination, CircuitType, Provider
 from netbox.plugins import get_plugin_config
 from django.utils.text import slugify
+from extras.models import Tag
 
 from .models import CDPNeighbor, DiscoveryLog, DiscoveryRun, SNMPCredential
 
@@ -611,6 +612,9 @@ class DiscoveryService:
                 device.serial = result.serial
         device.full_clean()
         device.save()
+        discovery_tag = Tag.objects.filter(name="discovery").first()
+        if discovery_tag:
+            device.tags.add(discovery_tag)
 
         interfaces_by_index = {}
         for index, name in result.interfaces.items():
