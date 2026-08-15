@@ -551,8 +551,6 @@ class DiscoveryService:
             termination.refresh_from_db(fields=("cable",))
             if endpoint.cable_id == termination.cable_id and endpoint.cable_id:
                 continue
-            if termination.cable_id:
-                continue
             cable_endpoint = endpoint
             if endpoint.cable_id:
                 topology_name = f"{cid}-{side}"
@@ -567,6 +565,8 @@ class DiscoveryService:
                     },
                 )
                 cable_endpoint.refresh_from_db(fields=("cable",))
+                if cable_endpoint.cable_id == termination.cable_id:
+                    continue
                 if cable_endpoint.cable_id:
                     self.log(
                         f"Circuit {cid} virtual topology endpoint conflict "
@@ -578,6 +578,28 @@ class DiscoveryService:
                     f"Circuit {cid} uses virtual topology endpoint at "
                     f"{name} because {interface_name} already has a cable.",
                 )
+            if termination.cable_id:
+                cable = termination.cable
+                missing_device_end = (
+                    not cable.a_terminations
+                    if termination.cable_end == "B"
+                    else not cable.b_terminations
+                )
+                if not missing_device_end:
+                    continue
+                if termination.cable_end == "B":
+                    cable.a_terminations = [cable_endpoint]
+                    cable.b_terminations = [termination]
+                else:
+                    cable.a_terminations = [termination]
+                    cable.b_terminations = [cable_endpoint]
+                cable.full_clean()
+                cable.save()
+                self.log(
+                    f"Circuit {cid} repaired missing cable endpoint at "
+                    f"{name} / {interface_name}.",
+                )
+                continue
             cable = Cable(
                 label=f"{cid}-{side}", status="connected", tenant=tenant,
                 a_terminations=[cable_endpoint], b_terminations=[termination],

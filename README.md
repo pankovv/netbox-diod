@@ -24,6 +24,8 @@ with SNMPv3.
    If one physical interface has multiple neighbors, additional links use
    stable dedicated topology interfaces because NetBox permits one cable per
    interface and does not allow cables on interfaces of type `virtual`.
+   A later discovery repairs a missing device-side cable termination after a
+   device has been deleted and recreated.
 9. Stores progress and an event log for every background discovery run.
 
 Credentials are encrypted at rest with Fernet. The encryption key is kept in
