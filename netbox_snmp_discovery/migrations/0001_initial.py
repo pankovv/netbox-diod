@@ -33,6 +33,7 @@ class Migration(migrations.Migration):
                     choices=[
                         ("AES", "AES-128"),
                         ("AES256", "AES-256"),
+                        ("AES256C", "AES-256 (Cisco)"),
                         ("DES", "DES"),
                     ],
                     default="AES", max_length=8,

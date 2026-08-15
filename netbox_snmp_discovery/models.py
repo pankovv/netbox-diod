@@ -11,6 +11,7 @@ class SNMPCredential(models.Model):
     PRIV_CHOICES = (
         ("AES", "AES-128"),
         ("AES256", "AES-256"),
+        ("AES256C", "AES-256 (Cisco)"),
         ("DES", "DES"),
     )
 
