@@ -1,0 +1,14 @@
+{% extends 'base/layout.html' %}
+{% block title %}Discovery Runs{% endblock %}
+{% block content %}
+<div class="card"><h2 class="card-header">Discovery Runs</h2>
+<div class="table-responsive"><table class="table table-hover">
+<thead><tr><th>ID</th><th>Created</th><th>Status</th><th>Progress</th><th>Active IPs</th><th>Devices</th></tr></thead>
+<tbody>{% for run in object_list %}<tr>
+<td><a href="{{ run.get_absolute_url }}">{{ run.pk }}</a></td>
+<td>{{ run.created }}</td><td>{{ run.get_status_display }}</td>
+<td>{{ run.progress }}%</td><td>{{ run.addresses_active }}</td>
+<td>{{ run.devices_created }} created / {{ run.devices_updated }} updated</td>
+</tr>{% empty %}<tr><td colspan="6">No discovery runs.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

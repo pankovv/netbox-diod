@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netbox-snmp-discovery"
+version = "0.1.0"
+description = "SNMPv3 discovery plugin for NetBox"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "cryptography>=41",
+  "easysnmp>=0.2.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["netbox_snmp_discovery*"]
+
+[tool.setuptools.package-data]
+netbox_snmp_discovery = ["templates/**/*.html"]

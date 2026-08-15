@@ -1,0 +1,18 @@
+{% extends 'base/layout.html' %}
+{% block title %}Discovery Run {{ run.pk }}{% endblock %}
+{% block head %}{% if run.status == 'pending' or run.status == 'running' %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+<div class="card mb-3"><h2 class="card-header">Discovery Run {{ run.pk }}</h2>
+<div class="card-body">
+<p>Status: <strong>{{ run.get_status_display }}</strong>; progress: {{ run.progress }}%</p>
+<p>{{ run.addresses_checked }} checked, {{ run.addresses_active }} active,
+{{ run.devices_created }} devices created, {{ run.devices_updated }} updated.</p>
+</div></div>
+<div class="card"><h3 class="card-header">Log</h3>
+<div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Time</th><th>Level</th><th>Prefix</th><th>IP</th><th>Message</th></tr></thead>
+<tbody>{% for log in logs %}<tr><td>{{ log.timestamp }}</td><td>{{ log.level }}</td>
+<td>{{ log.prefix }}</td><td>{{ log.address|default:"" }}</td><td>{{ log.message }}</td></tr>
+{% empty %}<tr><td colspan="5">Waiting for log entries.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends 'base/layout.html' %}
+{% block title %}Run SNMP Discovery{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 class="card-header">Run Discovery</h2>
+  <div class="card-body">
+    <p>Scans existing IP addresses inside prefixes tagged exactly <code>discovery</code>.</p>
+    <form method="post">{% csrf_token %}
+      {{ form.as_p }}
+      <button class="btn btn-primary" type="submit">Start Discovery</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
