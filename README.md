@@ -19,7 +19,8 @@ with SNMPv3.
 7. Synchronizes manufacturer/model from ENTITY-MIB, all IF-MIB interfaces,
    and CDP/LLDP neighbor data.
 8. Creates one deduplicated NetBox Circuit per resolved neighbor link, with
-   A/Z terminations inherited from the endpoint device sites.
+   A/Z terminations inherited from the endpoint device sites and cables each
+   termination to its device interface for NetBox Topology Views.
 9. Stores progress and an event log for every background discovery run.
 
 Credentials are encrypted at rest with Fernet. The encryption key is kept in

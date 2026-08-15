@@ -11,7 +11,7 @@ from easysnmp import Session
 from ipam.choices import IPAddressStatusChoices
 from ipam.models import IPAddress, Prefix
 from dcim.models import (
-    Device, DeviceRole, DeviceType, Interface, Manufacturer, Site,
+    Cable, Device, DeviceRole, DeviceType, Interface, Manufacturer, Site,
 )
 from circuits.models import Circuit, CircuitTermination, CircuitType, Provider
 from netbox.plugins import get_plugin_config
@@ -501,11 +501,12 @@ class DiscoveryService:
             return None
         endpoints = sorted((
             (local_interface.device.name, local_interface.name,
-             local_interface.device.site_id),
-            (remote_device.name, remote_interface.name, remote_device.site_id),
+             local_interface.device.site_id, local_interface),
+            (remote_device.name, remote_interface.name, remote_device.site_id,
+             remote_interface),
         ), key=lambda endpoint: (endpoint[0].casefold(), endpoint[1].casefold()))
         identity = "|".join(
-            f"{name}@{interface}" for name, interface, _ in endpoints
+            f"{name}@{interface}" for name, interface, _, _ in endpoints
         )
         digest = hashlib.sha256(identity.casefold().encode()).hexdigest()[:16]
         cid = f"DISC-{digest}"
@@ -527,7 +528,9 @@ class DiscoveryService:
             },
         )
         site_type = ContentType.objects.get_for_model(Site)
-        for side, (name, interface_name, site_id) in zip(("A", "Z"), endpoints):
+        for side, (name, interface_name, site_id, endpoint) in zip(
+            ("A", "Z"), endpoints
+        ):
             termination, _ = CircuitTermination.objects.update_or_create(
                 circuit=circuit, term_side=side,
                 defaults={
@@ -537,6 +540,23 @@ class DiscoveryService:
             )
             termination.full_clean()
             termination.save()
+            endpoint.refresh_from_db(fields=("cable",))
+            termination.refresh_from_db(fields=("cable",))
+            if endpoint.cable_id == termination.cable_id and endpoint.cable_id:
+                continue
+            if endpoint.cable_id or termination.cable_id:
+                self.log(
+                    f"Circuit {cid} cable conflict at {name} / "
+                    f"{interface_name}; existing cable was preserved.",
+                    "warning",
+                )
+                continue
+            cable = Cable(
+                label=f"{cid}-{side}", status="connected", tenant=tenant,
+                a_terminations=[endpoint], b_terminations=[termination],
+            )
+            cable.full_clean()
+            cable.save()
         return circuit
 
     @transaction.atomic
