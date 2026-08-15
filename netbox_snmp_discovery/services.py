@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import ipaddress
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -11,7 +12,9 @@ from dcim.models import (
     Device, DeviceRole, DeviceType, Interface, Manufacturer, Site,
 )
 from netbox.plugins import get_plugin_config
-from .models import DiscoveryLog, DiscoveryRun, SNMPCredential
+from django.utils.text import slugify
+
+from .models import CDPNeighbor, DiscoveryLog, DiscoveryRun, SNMPCredential
 
 
 SYS_DESCR = ".1.3.6.1.2.1.1.1.0"
@@ -20,6 +23,12 @@ SYS_NAME = ".1.3.6.1.2.1.1.5.0"
 IF_DESCR = ".1.3.6.1.2.1.2.2.1.2"
 IP_IF_INDEX = ".1.3.6.1.2.1.4.20.1.2"
 ENTITY_SERIAL = ".1.3.6.1.2.1.47.1.1.1.1.11"
+ENTITY_MFG = ".1.3.6.1.2.1.47.1.1.1.1.12"
+ENTITY_MODEL = ".1.3.6.1.2.1.47.1.1.1.1.13"
+CDP_ADDRESS = ".1.3.6.1.4.1.9.9.23.1.2.1.1.4"
+CDP_DEVICE_ID = ".1.3.6.1.4.1.9.9.23.1.2.1.1.6"
+CDP_DEVICE_PORT = ".1.3.6.1.4.1.9.9.23.1.2.1.1.7"
+CDP_PLATFORM = ".1.3.6.1.4.1.9.9.23.1.2.1.1.8"
 
 
 @dataclass
@@ -36,8 +45,11 @@ class SNMPResult:
     description: str
     object_id: str
     serial: str
+    manufacturer: str
+    model: str
+    interfaces: dict
     interface_index: str
-    interface_name: str
+    neighbors: list
 
 
 class DiscoveryService:
@@ -52,6 +64,9 @@ class DiscoveryService:
         )
         self.workers = max(
             1, int(get_plugin_config("netbox_snmp_discovery", "workers"))
+        )
+        self.snmp_workers = max(
+            1, int(get_plugin_config("netbox_snmp_discovery", "snmp_workers"))
         )
         self.tcp_port = int(
             get_plugin_config("netbox_snmp_discovery", "tcp_fallback_port")
@@ -191,6 +206,21 @@ class DiscoveryService:
     def _oid_suffix(item, marker):
         return item.oid_index or item.oid.rsplit(marker, 1)[-1]
 
+    @staticmethod
+    def _table_key(item, base_oid):
+        suffix = item.oid.removeprefix(base_oid).strip(".")
+        if item.oid_index:
+            suffix = ".".join(part for part in (suffix, item.oid_index) if part)
+        return suffix
+
+    @staticmethod
+    def _decode_cdp_address(value):
+        try:
+            raw = bytes(ord(character) for character in value)
+            return str(ipaddress.ip_address(raw))
+        except (ValueError, TypeError):
+            return None
+
     def _snmp_session(self, address):
         return Session(
             hostname=address,
@@ -217,6 +247,8 @@ class DiscoveryService:
             raise RuntimeError("empty sysName/sysDescr")
 
         serial = ""
+        manufacturer = ""
+        model = ""
         try:
             for item in session.walk(ENTITY_SERIAL):
                 value = item.value.strip()
@@ -225,11 +257,35 @@ class DiscoveryService:
                     break
         except Exception:
             pass
+        try:
+            manufacturers = {
+                self._table_key(item, ENTITY_MFG): item.value.strip()
+                for item in session.walk(ENTITY_MFG)
+            }
+            models = {
+                self._table_key(item, ENTITY_MODEL): item.value.strip()
+                for item in session.walk(ENTITY_MODEL)
+            }
+            manufacturer = manufacturers.get("1", "") or next(
+                (value for value in manufacturers.values() if value), ""
+            )
+            model = models.get("1", "") or next(
+                (value for value in models.values() if value), ""
+            )
+        except Exception:
+            pass
+        if not manufacturer:
+            manufacturer = (
+                "Cisco" if object_id.startswith(".1.3.6.1.4.1.9.")
+                or "cisco" in description.lower() else "Unknown"
+            )
+        if not model:
+            model = "Unknown (SNMP)"
 
         interfaces = {}
         try:
             for item in session.walk(IF_DESCR):
-                index = self._oid_suffix(item, ".1.2.")
+                index = self._table_key(item, IF_DESCR)
                 interfaces[str(index)] = item.value.strip()
         except Exception:
             pass
@@ -237,21 +293,52 @@ class DiscoveryService:
         interface_index = ""
         try:
             for item in session.walk(IP_IF_INDEX):
-                item_address = self._oid_suffix(item, ".1.2.")
+                item_address = self._table_key(item, IP_IF_INDEX)
                 if item_address == address:
                     interface_index = str(item.value)
                     break
         except Exception:
             pass
-        interface_name = interfaces.get(interface_index, "SNMP Discovery")
+        neighbors = []
+        try:
+            device_ids = {
+                self._table_key(item, CDP_DEVICE_ID): item.value.strip()
+                for item in session.walk(CDP_DEVICE_ID)
+            }
+            ports = {
+                self._table_key(item, CDP_DEVICE_PORT): item.value.strip()
+                for item in session.walk(CDP_DEVICE_PORT)
+            }
+            platforms = {
+                self._table_key(item, CDP_PLATFORM): item.value.strip()
+                for item in session.walk(CDP_PLATFORM)
+            }
+            addresses = {
+                self._table_key(item, CDP_ADDRESS):
+                    self._decode_cdp_address(item.value)
+                for item in session.walk(CDP_ADDRESS)
+            }
+            for key, remote_name in device_ids.items():
+                if not remote_name:
+                    continue
+                neighbors.append({
+                    "local_index": key.split(".", 1)[0],
+                    "remote_name": remote_name[:128],
+                    "remote_port": ports.get(key, "")[:128],
+                    "platform": platforms.get(key, "")[:128],
+                    "address": addresses.get(key),
+                })
+        except Exception:
+            pass
         return SNMPResult(
             address, name[:64], description, object_id, serial,
-            interface_index, interface_name[:64],
+            manufacturer[:100], model[:100], interfaces,
+            interface_index, neighbors,
         )
 
     def _discover_devices(self, targets):
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.workers
+            max_workers=self.snmp_workers
         ) as executor:
             futures = {
                 executor.submit(self._snmp_get, target): target
@@ -275,31 +362,52 @@ class DiscoveryService:
                 self.run.progress = 50 + int(49 * processed / max(total, 1))
                 self.run.save(update_fields=("progress",))
 
-    def _device_type(self, object_id):
-        if object_id:
+    def _device_type(self, result):
+        if result.object_id:
             matched = DeviceType.objects.filter(
-                custom_field_data__snmp_sysobjectid=object_id
+                custom_field_data__snmp_sysobjectid=result.object_id
             ).first()
             if matched:
                 return matched
         manufacturer, _ = Manufacturer.objects.get_or_create(
-            name="Generic", defaults={"slug": "generic"}
+            name=result.manufacturer,
+            defaults={"slug": slugify(result.manufacturer)[:100] or "unknown"},
         )
         device_type, _ = DeviceType.objects.get_or_create(
             manufacturer=manufacturer,
-            model="Unknown (SNMP)",
-            defaults={"slug": "unknown-snmp"},
+            model=result.model,
+            defaults={"slug": slugify(result.model)[:100] or "unknown-snmp"},
         )
         return device_type
 
+    @staticmethod
+    def _interface_type(name):
+        lowered = name.lower()
+        if "fastethernet" in lowered:
+            return "100base-tx"
+        if "tengigabit" in lowered:
+            return "10gbase-t"
+        if "gigabit" in lowered:
+            return "1000base-t"
+        if "null" in lowered or "loopback" in lowered:
+            return "virtual"
+        return "other"
+
     def _find_device(self, target, result):
-        if result.serial:
-            device = Device.objects.filter(serial=result.serial).first()
-            if device:
-                return device
-        return Device.objects.filter(
+        device = Device.objects.filter(
             name=result.name, site=target.site
         ).first()
+        if device:
+            return device
+        if result.serial:
+            for candidate in Device.objects.filter(serial=result.serial):
+                candidate_ip = (
+                    str(candidate.primary_ip4.address.ip)
+                    if candidate.primary_ip4_id else None
+                )
+                if candidate_ip == result.address:
+                    return candidate
+        return None
 
     @transaction.atomic
     def _upsert_device(self, target, result):
@@ -307,18 +415,32 @@ class DiscoveryService:
             DeviceRole.objects.filter(name=self.role_name).first()
             or DeviceRole.objects.get(slug=self.role_name)
         )
-        device_type = self._device_type(result.object_id)
+        device_type = self._device_type(result)
         device = self._find_device(target, result)
         created = device is None
         assigned = target.ip_object.assigned_object
         if assigned and (
             created or getattr(assigned, "device_id", None) != device.pk
         ):
-            self.log(
-                f"IP assignment conflict with {assigned}.", "error",
-                target.prefix.prefix, result.address,
+            assigned_device = getattr(assigned, "device", None)
+            stale_assignment = (
+                created
+                and assigned_device is not None
+                and assigned_device.name != result.name
+                and assigned_device.primary_ip4_id != target.ip_object.pk
             )
-            return
+            if stale_assignment:
+                self.log(
+                    f"Reclaiming stale IP assignment from "
+                    f"{assigned_device.name}.",
+                    "warning", target.prefix.prefix, result.address,
+                )
+            else:
+                self.log(
+                    f"IP assignment conflict with {assigned}.", "error",
+                    target.prefix.prefix, result.address,
+                )
+                return
         if created:
             device = Device(
                 name=result.name, serial=result.serial,
@@ -340,16 +462,58 @@ class DiscoveryService:
         device.full_clean()
         device.save()
 
-        interface, _ = Interface.objects.get_or_create(
-            device=device, name=result.interface_name,
-            defaults={"type": "other", "enabled": True},
-        )
+        interfaces_by_index = {}
+        for index, name in result.interfaces.items():
+            if not name:
+                continue
+            interface, _ = Interface.objects.update_or_create(
+                device=device, name=name[:64],
+                defaults={
+                    "type": self._interface_type(name),
+                    "enabled": True,
+                },
+            )
+            interfaces_by_index[index] = interface
+        interface = interfaces_by_index.get(result.interface_index)
+        if interface is None:
+            interface, _ = Interface.objects.get_or_create(
+                device=device, name="SNMP Discovery",
+                defaults={"type": "virtual", "enabled": True},
+            )
         ip_object = target.ip_object
         ip_object.assigned_object = interface
         ip_object.status = IPAddressStatusChoices.STATUS_ACTIVE
         ip_object.save()
         device.primary_ip4 = ip_object
         device.save(update_fields=("primary_ip4",))
+        stale_interface = device.interfaces.filter(
+            name="SNMP Discovery"
+        ).exclude(pk=interface.pk).first()
+        if (
+            stale_interface
+            and not stale_interface.ip_addresses.exists()
+            and stale_interface.cable_id is None
+        ):
+            stale_interface.delete()
+
+        CDPNeighbor.objects.filter(local_device=device).update(active=False)
+        for neighbor in result.neighbors:
+            local_interface = interfaces_by_index.get(neighbor["local_index"])
+            remote_device = Device.objects.filter(
+                name__iexact=neighbor["remote_name"], site=target.site
+            ).first()
+            CDPNeighbor.objects.update_or_create(
+                local_device=device,
+                local_interface=local_interface,
+                remote_device_name=neighbor["remote_name"],
+                remote_port=neighbor["remote_port"],
+                defaults={
+                    "remote_device": remote_device,
+                    "remote_platform": neighbor["platform"],
+                    "remote_address": neighbor["address"],
+                    "active": True,
+                },
+            )
 
         field = "devices_created" if created else "devices_updated"
         setattr(self.run, field, getattr(self.run, field) + 1)
@@ -357,6 +521,7 @@ class DiscoveryService:
         action = "Created" if created else "Updated"
         self.log(
             f"{action} device {device.name}; primary IP assigned to "
-            f"{interface.name}.",
+            f"{interface.name}; {len(interfaces_by_index)} interfaces and "
+            f"{len(result.neighbors)} CDP neighbors synchronized.",
             prefix=target.prefix.prefix, address=result.address,
         )

@@ -1,0 +1,17 @@
+{% extends 'base/layout.html' %}
+{% block title %}CDP Neighbors{% endblock %}
+{% block content %}
+<div class="card"><h2 class="card-header">CDP Neighbors</h2>
+<div class="table-responsive"><table class="table table-hover">
+<thead><tr><th>Local device</th><th>Local interface</th><th>Remote device</th>
+<th>Remote port</th><th>Platform</th><th>Address</th><th>Active</th><th>Last seen</th></tr></thead>
+<tbody>{% for object in object_list %}<tr>
+<td><a href="{{ object.local_device.get_absolute_url }}">{{ object.local_device }}</a></td>
+<td>{{ object.local_interface|default:"" }}</td>
+<td>{% if object.remote_device %}<a href="{{ object.remote_device.get_absolute_url }}">{{ object.remote_device_name }}</a>{% else %}{{ object.remote_device_name }}{% endif %}</td>
+<td>{{ object.remote_port }}</td><td>{{ object.remote_platform }}</td>
+<td>{{ object.remote_address|default:"" }}</td><td>{{ object.active|yesno:"Yes,No" }}</td>
+<td>{{ object.last_seen }}</td>
+</tr>{% empty %}<tr><td colspan="8">No CDP neighbors discovered.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

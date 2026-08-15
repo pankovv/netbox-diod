@@ -86,3 +86,39 @@ class DiscoveryLog(models.Model):
 
     class Meta:
         ordering = ("timestamp", "pk")
+
+
+class CDPNeighbor(models.Model):
+    local_device = models.ForeignKey(
+        "dcim.Device", on_delete=models.CASCADE, related_name="cdp_neighbors"
+    )
+    local_interface = models.ForeignKey(
+        "dcim.Interface", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="cdp_neighbors",
+    )
+    remote_device = models.ForeignKey(
+        "dcim.Device", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="discovered_as_cdp_neighbor",
+    )
+    remote_device_name = models.CharField(max_length=128)
+    remote_port = models.CharField(max_length=128, blank=True)
+    remote_platform = models.CharField(max_length=128, blank=True)
+    remote_address = models.GenericIPAddressField(null=True, blank=True)
+    active = models.BooleanField(default=True)
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("local_device__name", "local_interface__name", "remote_device_name")
+        constraints = (
+            models.UniqueConstraint(
+                fields=(
+                    "local_device", "local_interface",
+                    "remote_device_name", "remote_port",
+                ),
+                name="netbox_snmp_discovery_unique_cdp_neighbor",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.local_device} -> {self.remote_device_name}"

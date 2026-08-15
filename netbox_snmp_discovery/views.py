@@ -7,7 +7,7 @@ from django.views.generic import DeleteView, ListView
 
 from .forms import DiscoveryStartForm, SNMPCredentialForm
 from .jobs import SNMPDiscoveryJob
-from .models import DiscoveryRun, SNMPCredential
+from .models import CDPNeighbor, DiscoveryRun, SNMPCredential
 
 
 class RunDiscoveryView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -69,6 +69,18 @@ class RunDetailView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def get(self, request, pk):
         run = get_object_or_404(
             DiscoveryRun.objects.select_related("credential", "created_by"), pk=pk
+        )
+
+
+class NeighborListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    permission_required = "netbox_snmp_discovery.view_cdpneighbor"
+    model = CDPNeighbor
+    template_name = "netbox_snmp_discovery/neighbor_list.html"
+    paginate_by = 100
+
+    def get_queryset(self):
+        return CDPNeighbor.objects.select_related(
+            "local_device", "local_interface", "remote_device"
         )
         return render(
             request, "netbox_snmp_discovery/run_detail.html",

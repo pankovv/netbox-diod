@@ -16,7 +16,9 @@ with SNMPv3.
 6. Creates or updates a device, inherits tenant and site from its prefix,
    assigns the existing IP to the discovered interface, and makes it Primary
    IPv4.
-7. Stores progress and an event log for every background discovery run.
+7. Synchronizes manufacturer/model from ENTITY-MIB, all IF-MIB interfaces,
+   and Cisco CDP neighbor data.
+8. Stores progress and an event log for every background discovery run.
 
 Credentials are encrypted at rest with Fernet. The encryption key is kept in
 NetBox configuration, separately from the database.
@@ -50,6 +52,7 @@ PLUGINS_CONFIG = {
         "ping_timeout": 2,
         "snmp_timeout": 5,
         "workers": 16,
+        "snmp_workers": 1,
         "device_role": "net_automate",
         "tcp_fallback_port": 161,
     },
@@ -114,7 +117,10 @@ For DeviceType matching, create a NetBox custom field named
 `snmp_sysobjectid` for Device Types and store the numeric sysObjectID in it.
 If no match exists, the plugin uses **Generic / Unknown (SNMP)**.
 
-Devices are matched first by non-empty serial number, then by `name + site`.
+Devices are matched by `name + site`. A serial-number match is used for a
+rename only when the existing device has the same Primary IPv4; this prevents
+virtual devices with duplicated chassis serial numbers from overwriting one
+another.
 If a serial-matched device belongs to another site, it is not moved and a
 conflict is written to the discovery log.
 

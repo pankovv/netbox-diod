@@ -16,6 +16,11 @@ menu = PluginMenu(
                 link_text="Discovery Runs",
                 permissions=("netbox_snmp_discovery.view_discoveryrun",),
             ),
+            PluginMenuItem(
+                link="plugins:netbox_snmp_discovery:neighbor_list",
+                link_text="CDP Neighbors",
+                permissions=("netbox_snmp_discovery.view_cdpneighbor",),
+            ),
         )),
         ("Configuration", (
             PluginMenuItem(
