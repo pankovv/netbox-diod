@@ -82,7 +82,8 @@ sudo systemctl restart netbox netbox-rq
 Open **Plugins → SNMP Discovery**:
 
 - create a credential under **SNMP Credentials**;
-- choose it on **Run Discovery**;
+- choose it on **Run Discovery**, or enter USER, authPriv protocols and
+  passwords directly on the run form (they will be encrypted and saved);
 - click **Start Discovery**;
 - follow status and logs under **Discovery Runs**.
 

@@ -23,8 +23,30 @@ class RunDiscoveryView(LoginRequiredMixin, PermissionRequiredMixin, View):
         form = DiscoveryStartForm(request.POST)
         if not form.is_valid():
             return render(request, "netbox_snmp_discovery/run.html", {"form": form})
+        credential = form.cleaned_data.get("credential")
+        if credential is None:
+            if not request.user.has_perm(
+                "netbox_snmp_discovery.add_snmpcredential"
+            ):
+                form.add_error(
+                    None, "You do not have permission to save SNMP credentials."
+                )
+                return render(
+                    request, "netbox_snmp_discovery/run.html", {"form": form}
+                )
+            username = form.cleaned_data["username"]
+            credential, _ = SNMPCredential.objects.update_or_create(
+                name=f"SNMPv3 {username}",
+                defaults={
+                    "username": username,
+                    "auth_protocol": form.cleaned_data["auth_protocol"],
+                    "auth_key": form.cleaned_data["auth_key"],
+                    "priv_protocol": form.cleaned_data["priv_protocol"],
+                    "priv_key": form.cleaned_data["priv_key"],
+                },
+            )
         run = DiscoveryRun.objects.create(
-            credential=form.cleaned_data["credential"], created_by=request.user
+            credential=credential, created_by=request.user
         )
         SNMPDiscoveryJob.enqueue(
             user=request.user, run_id=run.pk, credential_id=run.credential_id,

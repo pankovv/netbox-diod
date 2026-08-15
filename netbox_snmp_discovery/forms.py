@@ -4,18 +4,33 @@ from .models import SNMPCredential
 
 
 class SNMPCredentialForm(forms.ModelForm):
-    auth_key = forms.CharField(widget=forms.PasswordInput(render_value=False))
-    priv_key = forms.CharField(widget=forms.PasswordInput(render_value=False))
+    security_level = forms.ChoiceField(
+        choices=(("authPriv", "authPriv"),),
+        initial="authPriv",
+        disabled=True,
+        label="SNMPV3_LEVEL",
+    )
+    auth_key = forms.CharField(
+        label="SNMPV3_AUTH_PASSWORD",
+        widget=forms.PasswordInput(render_value=False),
+    )
+    priv_key = forms.CharField(
+        label="SNMPV3_PRIV_PASSWORD",
+        widget=forms.PasswordInput(render_value=False),
+    )
 
     class Meta:
         model = SNMPCredential
         fields = (
-            "name", "username", "auth_key", "priv_key",
-            "auth_protocol", "priv_protocol",
+            "name", "username", "security_level", "auth_protocol",
+            "auth_key", "priv_protocol", "priv_key",
         )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["username"].label = "SNMPV3_USER"
+        self.fields["auth_protocol"].label = "SNMPV3_AUTH_PROTOCOL"
+        self.fields["priv_protocol"].label = "SNMPV3_PRIV_PROTOCOL"
         if self.instance.pk:
             self.fields["auth_key"].required = False
             self.fields["priv_key"].required = False
@@ -34,5 +49,51 @@ class SNMPCredentialForm(forms.ModelForm):
 class DiscoveryStartForm(forms.Form):
     credential = forms.ModelChoiceField(
         queryset=SNMPCredential.objects.all(),
-        label="SNMPv3 credential",
+        label="Saved SNMPv3 credential",
+        required=False,
+        help_text="Select a saved credential or fill all fields below.",
     )
+    username = forms.CharField(
+        label="SNMPV3_USER", required=False, initial="snmp"
+    )
+    security_level = forms.ChoiceField(
+        label="SNMPV3_LEVEL",
+        choices=(("authPriv", "authPriv"),),
+        initial="authPriv",
+        disabled=True,
+    )
+    auth_protocol = forms.ChoiceField(
+        label="SNMPV3_AUTH_PROTOCOL",
+        choices=SNMPCredential.AUTH_CHOICES,
+        initial="SHA",
+    )
+    auth_key = forms.CharField(
+        label="SNMPV3_AUTH_PASSWORD",
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+    )
+    priv_protocol = forms.ChoiceField(
+        label="SNMPV3_PRIV_PROTOCOL",
+        choices=SNMPCredential.PRIV_CHOICES,
+        initial="AES",
+    )
+    priv_key = forms.CharField(
+        label="SNMPV3_PRIV_PASSWORD",
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("credential"):
+            return cleaned
+        missing = [
+            field for field in ("username", "auth_key", "priv_key")
+            if not cleaned.get(field)
+        ]
+        if missing:
+            raise forms.ValidationError(
+                "Select a saved credential or provide USER, AUTH_PASSWORD "
+                "and PRIV_PASSWORD."
+            )
+        return cleaned

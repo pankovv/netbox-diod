@@ -5,6 +5,8 @@
   <h2 class="card-header">Run Discovery</h2>
   <div class="card-body">
     <p>Scans existing IP addresses inside prefixes tagged exactly <code>discovery</code>.</p>
+    <p>Select a saved credential, or enter SNMPv3 authPriv values below.
+    Inline values are encrypted and saved as <code>SNMPv3 USER</code>.</p>
     <form method="post">{% csrf_token %}
       {{ form.as_p }}
       <button class="btn btn-primary" type="submit">Start Discovery</button>
