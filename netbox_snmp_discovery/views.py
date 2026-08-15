@@ -70,6 +70,10 @@ class RunDetailView(LoginRequiredMixin, PermissionRequiredMixin, View):
         run = get_object_or_404(
             DiscoveryRun.objects.select_related("credential", "created_by"), pk=pk
         )
+        return render(
+            request, "netbox_snmp_discovery/run_detail.html",
+            {"run": run, "logs": run.logs.all()},
+        )
 
 
 class NeighborListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
@@ -81,10 +85,6 @@ class NeighborListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     def get_queryset(self):
         return CDPNeighbor.objects.select_related(
             "local_device", "local_interface", "remote_device"
-        )
-        return render(
-            request, "netbox_snmp_discovery/run_detail.html",
-            {"run": run, "logs": run.logs.all()},
         )
 
 
