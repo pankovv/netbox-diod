@@ -1,5 +1,6 @@
 import django.db.models.deletion
 from django.conf import settings
+import django.core.validators
 from django.db import migrations, models
 
 import netbox_snmp_discovery.fields
@@ -18,8 +19,12 @@ class Migration(migrations.Migration):
                 )),
                 ("name", models.CharField(max_length=100, unique=True)),
                 ("username", models.CharField(max_length=128)),
-                ("auth_key", netbox_snmp_discovery.fields.EncryptedTextField()),
-                ("priv_key", netbox_snmp_discovery.fields.EncryptedTextField()),
+                ("auth_key", netbox_snmp_discovery.fields.EncryptedTextField(
+                    validators=[django.core.validators.MinLengthValidator(8)]
+                )),
+                ("priv_key", netbox_snmp_discovery.fields.EncryptedTextField(
+                    validators=[django.core.validators.MinLengthValidator(8)]
+                )),
                 ("auth_protocol", models.CharField(
                     choices=[("SHA", "SHA"), ("MD5", "MD5")],
                     default="SHA", max_length=8,

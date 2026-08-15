@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MinLengthValidator
 from django.db import models
 from django.urls import reverse
 
@@ -11,8 +12,8 @@ class SNMPCredential(models.Model):
 
     name = models.CharField(max_length=100, unique=True)
     username = models.CharField(max_length=128)
-    auth_key = EncryptedTextField()
-    priv_key = EncryptedTextField()
+    auth_key = EncryptedTextField(validators=[MinLengthValidator(8)])
+    priv_key = EncryptedTextField(validators=[MinLengthValidator(8)])
     auth_protocol = models.CharField(max_length=8, choices=AUTH_CHOICES, default="SHA")
     priv_protocol = models.CharField(max_length=8, choices=PRIV_CHOICES, default="AES")
     created = models.DateTimeField(auto_now_add=True)

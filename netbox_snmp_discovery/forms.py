@@ -12,10 +12,14 @@ class SNMPCredentialForm(forms.ModelForm):
     )
     auth_key = forms.CharField(
         label="SNMPV3_AUTH_PASSWORD",
+        min_length=8,
+        help_text="At least 8 characters; enter the value without shell quotes.",
         widget=forms.PasswordInput(render_value=False),
     )
     priv_key = forms.CharField(
         label="SNMPV3_PRIV_PASSWORD",
+        min_length=8,
+        help_text="At least 8 characters; enter the value without shell quotes.",
         widget=forms.PasswordInput(render_value=False),
     )
 
@@ -70,6 +74,8 @@ class DiscoveryStartForm(forms.Form):
     auth_key = forms.CharField(
         label="SNMPV3_AUTH_PASSWORD",
         required=False,
+        min_length=8,
+        help_text="At least 8 characters; enter the value without shell quotes.",
         widget=forms.PasswordInput(render_value=False),
     )
     priv_protocol = forms.ChoiceField(
@@ -80,12 +86,20 @@ class DiscoveryStartForm(forms.Form):
     priv_key = forms.CharField(
         label="SNMPV3_PRIV_PASSWORD",
         required=False,
+        min_length=8,
+        help_text="At least 8 characters; enter the value without shell quotes.",
         widget=forms.PasswordInput(render_value=False),
     )
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("credential"):
+        credential = cleaned.get("credential")
+        if credential:
+            if len(credential.auth_key) < 8 or len(credential.priv_key) < 8:
+                raise forms.ValidationError(
+                    "The saved credential has an invalid AUTH_PASSWORD or "
+                    "PRIV_PASSWORD. Edit it and use at least 8 characters."
+                )
             return cleaned
         missing = [
             field for field in ("username", "auth_key", "priv_key")
