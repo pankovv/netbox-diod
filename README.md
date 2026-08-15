@@ -95,7 +95,7 @@ request is not blocked. The run detail page refreshes while work is pending.
 Credentials support:
 
 - authentication: SHA or MD5;
-- privacy: AES or DES;
+- privacy: AES-128, AES-256 or DES;
 - security level: authPriv.
 
 SNMP timeout is capped at five seconds. Authentication failures and timeouts

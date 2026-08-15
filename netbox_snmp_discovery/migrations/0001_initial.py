@@ -30,7 +30,11 @@ class Migration(migrations.Migration):
                     default="SHA", max_length=8,
                 )),
                 ("priv_protocol", models.CharField(
-                    choices=[("AES", "AES"), ("DES", "DES")],
+                    choices=[
+                        ("AES", "AES-128"),
+                        ("AES256", "AES-256"),
+                        ("DES", "DES"),
+                    ],
                     default="AES", max_length=8,
                 )),
                 ("created", models.DateTimeField(auto_now_add=True)),

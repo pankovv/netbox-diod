@@ -8,7 +8,11 @@ from .fields import EncryptedTextField
 
 class SNMPCredential(models.Model):
     AUTH_CHOICES = (("SHA", "SHA"), ("MD5", "MD5"))
-    PRIV_CHOICES = (("AES", "AES"), ("DES", "DES"))
+    PRIV_CHOICES = (
+        ("AES", "AES-128"),
+        ("AES256", "AES-256"),
+        ("DES", "DES"),
+    )
 
     name = models.CharField(max_length=100, unique=True)
     username = models.CharField(max_length=128)
