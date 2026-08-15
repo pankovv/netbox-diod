@@ -8,4 +8,4 @@ class SNMPDiscoveryJob(JobRunner):
         name = "SNMPv3 network discovery"
 
     def run(self, run_id, credential_id, *args, **kwargs):
-        DiscoveryService(run_id, credential_id).run()
+        DiscoveryService(run_id, credential_id).execute()

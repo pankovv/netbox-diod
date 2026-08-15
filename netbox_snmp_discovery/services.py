@@ -66,7 +66,7 @@ class DiscoveryService:
             address=address, message=message,
         )
 
-    def run(self):
+    def execute(self):
         self.run.status = "running"
         self.run.started = timezone.now()
         self.run.save(update_fields=("status", "started"))
