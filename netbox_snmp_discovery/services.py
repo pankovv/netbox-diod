@@ -1,9 +1,11 @@
 import asyncio
 import concurrent.futures
+import hashlib
 import ipaddress
 from dataclasses import dataclass
 
 from django.db import transaction
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from easysnmp import Session
 from ipam.choices import IPAddressStatusChoices
@@ -11,6 +13,7 @@ from ipam.models import IPAddress, Prefix
 from dcim.models import (
     Device, DeviceRole, DeviceType, Interface, Manufacturer, Site,
 )
+from circuits.models import Circuit, CircuitTermination, CircuitType, Provider
 from netbox.plugins import get_plugin_config
 from django.utils.text import slugify
 
@@ -29,6 +32,11 @@ CDP_ADDRESS = ".1.3.6.1.4.1.9.9.23.1.2.1.1.4"
 CDP_DEVICE_ID = ".1.3.6.1.4.1.9.9.23.1.2.1.1.6"
 CDP_DEVICE_PORT = ".1.3.6.1.4.1.9.9.23.1.2.1.1.7"
 CDP_PLATFORM = ".1.3.6.1.4.1.9.9.23.1.2.1.1.8"
+LLDP_LOCAL_PORT_ID = ".1.0.8802.1.1.2.1.3.7.1.3"
+LLDP_REMOTE_PORT_ID = ".1.0.8802.1.1.2.1.4.1.1.7"
+LLDP_REMOTE_PORT_DESC = ".1.0.8802.1.1.2.1.4.1.1.8"
+LLDP_REMOTE_SYS_NAME = ".1.0.8802.1.1.2.1.4.1.1.9"
+LLDP_REMOTE_SYS_DESC = ".1.0.8802.1.1.2.1.4.1.1.10"
 
 
 @dataclass
@@ -73,6 +81,15 @@ class DiscoveryService:
         )
         self.role_name = get_plugin_config(
             "netbox_snmp_discovery", "device_role"
+        )
+        self.create_circuits = bool(get_plugin_config(
+            "netbox_snmp_discovery", "create_circuits"
+        ))
+        self.circuit_provider = get_plugin_config(
+            "netbox_snmp_discovery", "circuit_provider"
+        )
+        self.circuit_type = get_plugin_config(
+            "netbox_snmp_discovery", "circuit_type"
         )
 
     def log(self, message, level="info", prefix="", address=None):
@@ -319,14 +336,60 @@ class DiscoveryService:
                 for item in session.walk(CDP_ADDRESS)
             }
             for key, remote_name in device_ids.items():
-                if not remote_name:
+                if not remote_name or remote_name.casefold().startswith("nosuch"):
                     continue
                 neighbors.append({
+                    "protocol": "cdp",
                     "local_index": key.split(".", 1)[0],
                     "remote_name": remote_name[:128],
                     "remote_port": ports.get(key, "")[:128],
                     "platform": platforms.get(key, "")[:128],
                     "address": addresses.get(key),
+                })
+        except Exception:
+            pass
+        try:
+            local_ports = {
+                self._table_key(item, LLDP_LOCAL_PORT_ID): item.value.strip()
+                for item in session.walk(LLDP_LOCAL_PORT_ID)
+            }
+            names = {
+                self._table_key(item, LLDP_REMOTE_SYS_NAME): item.value.strip()
+                for item in session.walk(LLDP_REMOTE_SYS_NAME)
+            }
+            port_ids = {
+                self._table_key(item, LLDP_REMOTE_PORT_ID): item.value.strip()
+                for item in session.walk(LLDP_REMOTE_PORT_ID)
+            }
+            port_descs = {
+                self._table_key(item, LLDP_REMOTE_PORT_DESC): item.value.strip()
+                for item in session.walk(LLDP_REMOTE_PORT_DESC)
+            }
+            descriptions = {
+                self._table_key(item, LLDP_REMOTE_SYS_DESC): item.value.strip()
+                for item in session.walk(LLDP_REMOTE_SYS_DESC)
+            }
+            for key, remote_name in names.items():
+                if not remote_name or remote_name.casefold().startswith("nosuch"):
+                    continue
+                parts = key.split(".")
+                local_port_number = parts[-2] if len(parts) >= 3 else ""
+                local_port_id = local_ports.get(local_port_number, "")
+                local_index = local_port_number
+                if local_port_id:
+                    local_index = next((
+                        index for index, value in interfaces.items()
+                        if value.casefold() == local_port_id.casefold()
+                    ), local_port_number)
+                neighbors.append({
+                    "protocol": "lldp",
+                    "local_index": local_index,
+                    "remote_name": remote_name[:128],
+                    "remote_port": (
+                        port_descs.get(key) or port_ids.get(key, "")
+                    )[:128],
+                    "platform": descriptions.get(key, "")[:128],
+                    "address": None,
                 })
         except Exception:
             pass
@@ -408,6 +471,73 @@ class DiscoveryService:
                 if candidate_ip == result.address:
                     return candidate
         return None
+
+    @staticmethod
+    def _port_key(name):
+        value = name.casefold().replace(" ", "")
+        aliases = {
+            "fastethernet": "fa", "gigabitethernet": "gi",
+            "tengigabitethernet": "te", "ethernet": "eth",
+        }
+        for long_name, short_name in aliases.items():
+            if value.startswith(long_name):
+                return short_name + value[len(long_name):]
+        return value
+
+    def _remote_interface(self, device, name):
+        wanted = self._port_key(name)
+        return next((
+            interface for interface in device.interfaces.all()
+            if self._port_key(interface.name) == wanted
+        ), None)
+
+    def _sync_circuit(self, neighbor, local_interface, remote_device):
+        if not self.create_circuits or not local_interface or not remote_device:
+            return None
+        remote_interface = self._remote_interface(
+            remote_device, neighbor["remote_port"]
+        )
+        if remote_interface is None or remote_interface.pk == local_interface.pk:
+            return None
+        endpoints = sorted((
+            (local_interface.device.name, local_interface.name,
+             local_interface.device.site_id),
+            (remote_device.name, remote_interface.name, remote_device.site_id),
+        ), key=lambda endpoint: (endpoint[0].casefold(), endpoint[1].casefold()))
+        identity = "|".join(
+            f"{name}@{interface}" for name, interface, _ in endpoints
+        )
+        digest = hashlib.sha256(identity.casefold().encode()).hexdigest()[:16]
+        cid = f"DISC-{digest}"
+        provider, _ = Provider.objects.get_or_create(
+            name=self.circuit_provider,
+            defaults={"slug": slugify(self.circuit_provider)[:100]},
+        )
+        circuit_type, _ = CircuitType.objects.get_or_create(
+            name=self.circuit_type,
+            defaults={"slug": slugify(self.circuit_type)[:100]},
+        )
+        local_tenant = local_interface.device.tenant
+        tenant = local_tenant if local_tenant == remote_device.tenant else None
+        circuit, _ = Circuit.objects.update_or_create(
+            provider=provider, cid=cid,
+            defaults={
+                "type": circuit_type, "status": "active", "tenant": tenant,
+                "description": identity[:200],
+            },
+        )
+        site_type = ContentType.objects.get_for_model(Site)
+        for side, (name, interface_name, site_id) in zip(("A", "Z"), endpoints):
+            termination, _ = CircuitTermination.objects.update_or_create(
+                circuit=circuit, term_side=side,
+                defaults={
+                    "termination_type": site_type, "termination_id": site_id,
+                    "description": f"{name} / {interface_name}"[:200],
+                },
+            )
+            termination.full_clean()
+            termination.save()
+        return circuit
 
     @transaction.atomic
     def _upsert_device(self, target, result):
@@ -502,7 +632,11 @@ class DiscoveryService:
             remote_device = Device.objects.filter(
                 name__iexact=neighbor["remote_name"], site=target.site
             ).first()
+            circuit = self._sync_circuit(
+                neighbor, local_interface, remote_device
+            )
             CDPNeighbor.objects.update_or_create(
+                protocol=neighbor["protocol"],
                 local_device=device,
                 local_interface=local_interface,
                 remote_device_name=neighbor["remote_name"],
@@ -511,6 +645,7 @@ class DiscoveryService:
                     "remote_device": remote_device,
                     "remote_platform": neighbor["platform"],
                     "remote_address": neighbor["address"],
+                    "circuit": circuit,
                     "active": True,
                 },
             )
@@ -522,6 +657,6 @@ class DiscoveryService:
         self.log(
             f"{action} device {device.name}; primary IP assigned to "
             f"{interface.name}; {len(interfaces_by_index)} interfaces and "
-            f"{len(result.neighbors)} CDP neighbors synchronized.",
+            f"{len(result.neighbors)} CDP/LLDP neighbors synchronized.",
             prefix=target.prefix.prefix, address=result.address,
         )

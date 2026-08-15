@@ -17,8 +17,10 @@ with SNMPv3.
    assigns the existing IP to the discovered interface, and makes it Primary
    IPv4.
 7. Synchronizes manufacturer/model from ENTITY-MIB, all IF-MIB interfaces,
-   and Cisco CDP neighbor data.
-8. Stores progress and an event log for every background discovery run.
+   and CDP/LLDP neighbor data.
+8. Creates one deduplicated NetBox Circuit per resolved neighbor link, with
+   A/Z terminations inherited from the endpoint device sites.
+9. Stores progress and an event log for every background discovery run.
 
 Credentials are encrypted at rest with Fernet. The encryption key is kept in
 NetBox configuration, separately from the database.
@@ -55,6 +57,9 @@ PLUGINS_CONFIG = {
         "snmp_workers": 1,
         "device_role": "net_automate",
         "tcp_fallback_port": 161,
+        "create_circuits": True,
+        "circuit_provider": "SNMP Discovery",
+        "circuit_type": "Discovered Link",
     },
 }
 ```

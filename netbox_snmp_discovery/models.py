@@ -89,6 +89,11 @@ class DiscoveryLog(models.Model):
 
 
 class CDPNeighbor(models.Model):
+    PROTOCOL_CHOICES = (("cdp", "CDP"), ("lldp", "LLDP"))
+
+    protocol = models.CharField(
+        max_length=4, choices=PROTOCOL_CHOICES, default="cdp"
+    )
     local_device = models.ForeignKey(
         "dcim.Device", on_delete=models.CASCADE, related_name="cdp_neighbors"
     )
@@ -99,6 +104,10 @@ class CDPNeighbor(models.Model):
     remote_device = models.ForeignKey(
         "dcim.Device", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="discovered_as_cdp_neighbor",
+    )
+    circuit = models.ForeignKey(
+        "circuits.Circuit", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="discovered_neighbors",
     )
     remote_device_name = models.CharField(max_length=128)
     remote_port = models.CharField(max_length=128, blank=True)
@@ -113,10 +122,10 @@ class CDPNeighbor(models.Model):
         constraints = (
             models.UniqueConstraint(
                 fields=(
-                    "local_device", "local_interface",
+                    "protocol", "local_device", "local_interface",
                     "remote_device_name", "remote_port",
                 ),
-                name="netbox_snmp_discovery_unique_cdp_neighbor",
+                name="netbox_snmp_discovery_unique_neighbor",
             ),
         )
 

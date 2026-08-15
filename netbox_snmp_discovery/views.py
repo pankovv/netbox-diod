@@ -84,7 +84,7 @@ class NeighborListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
     def get_queryset(self):
         return CDPNeighbor.objects.select_related(
-            "local_device", "local_interface", "remote_device"
+            "local_device", "local_interface", "remote_device", "circuit"
         )
 
 
