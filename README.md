@@ -61,6 +61,7 @@ PLUGINS_CONFIG = {
         "create_circuits": True,
         "circuit_provider": "SNMP Discovery",
         "circuit_type": "Discovered Link",
+        "move_device_on_site_change": True,
     },
 }
 ```

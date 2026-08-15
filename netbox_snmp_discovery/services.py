@@ -92,6 +92,9 @@ class DiscoveryService:
         self.circuit_type = get_plugin_config(
             "netbox_snmp_discovery", "circuit_type"
         )
+        self.move_device_on_site_change = bool(get_plugin_config(
+            "netbox_snmp_discovery", "move_device_on_site_change"
+        ))
 
     def log(self, message, level="info", prefix="", address=None):
         DiscoveryLog.objects.create(
@@ -463,6 +466,9 @@ class DiscoveryService:
         ).first()
         if device:
             return device
+        name_matches = Device.objects.filter(name=result.name)
+        if name_matches.count() == 1:
+            return name_matches.first()
         if result.serial:
             for candidate in Device.objects.filter(serial=result.serial):
                 candidate_ip = (
@@ -600,11 +606,26 @@ class DiscoveryService:
             )
         else:
             if device.site_id != target.site.pk:
+                if not self.move_device_on_site_change:
+                    self.log(
+                        f"Site conflict: device remains at {device.site}.",
+                        "error", target.prefix.prefix, result.address,
+                    )
+                    return
+                previous_site = device.site
+                if device.rack_id and device.rack.site_id != target.site.pk:
+                    device.rack = None
+                if (
+                    device.location_id
+                    and device.location.site_id != target.site.pk
+                ):
+                    device.location = None
+                device.site = target.site
                 self.log(
-                    f"Site conflict: device remains at {device.site}.",
-                    "error", target.prefix.prefix, result.address,
+                    f"Device moved from site {previous_site} to "
+                    f"{target.site} because its discovery Prefix changed.",
+                    "warning", target.prefix.prefix, result.address,
                 )
-                return
             device.name = result.name
             device.device_type = device_type
             device.tenant = target.prefix.tenant
