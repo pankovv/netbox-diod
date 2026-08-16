@@ -15,7 +15,7 @@ with SNMPv3.
    operator.
 6. Creates or updates a device, inherits tenant and site from its prefix,
    assigns the existing IP to the discovered interface, and makes it Primary
-   IPv4. Discovered devices inherit the `discovery` tag for topology filters.
+   IPv4. The prefix's `discovery` tag is not added to the device.
 7. Synchronizes manufacturer/model from ENTITY-MIB, all IF-MIB interfaces,
    and CDP/LLDP neighbor data.
 8. Creates one deduplicated NetBox Circuit per resolved neighbor link, with
@@ -129,10 +129,10 @@ For DeviceType matching, create a NetBox custom field named
 `snmp_sysobjectid` for Device Types and store the numeric sysObjectID in it.
 If no match exists, the plugin uses **Generic / Unknown (SNMP)**.
 
-Devices are matched by `name + site`. A serial-number match is used for a
-rename only when the existing device has the same Primary IPv4; this prevents
-virtual devices with duplicated chassis serial numbers from overwriting one
-another.
+Devices with a discovered serial number are matched by that serial number
+first, regardless of their current name or Primary IPv4, so a second device is
+not created. Devices without a serial number are matched by `name + site`, or
+by a globally unique name.
 If a serial-matched device belongs to another site, it is not moved and a
 conflict is written to the discovery log.
 

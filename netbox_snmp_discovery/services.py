@@ -16,8 +16,6 @@ from dcim.models import (
 from circuits.models import Circuit, CircuitTermination, CircuitType, Provider
 from netbox.plugins import get_plugin_config
 from django.utils.text import slugify
-from extras.models import Tag
-
 from .models import CDPNeighbor, DiscoveryLog, DiscoveryRun, SNMPCredential
 
 
@@ -461,6 +459,12 @@ class DiscoveryService:
         return "other"
 
     def _find_device(self, target, result):
+        if result.serial:
+            device = Device.objects.filter(
+                serial__iexact=result.serial
+            ).first()
+            if device:
+                return device
         device = Device.objects.filter(
             name=result.name, site=target.site
         ).first()
@@ -469,14 +473,6 @@ class DiscoveryService:
         name_matches = Device.objects.filter(name=result.name)
         if name_matches.count() == 1:
             return name_matches.first()
-        if result.serial:
-            for candidate in Device.objects.filter(serial=result.serial):
-                candidate_ip = (
-                    str(candidate.primary_ip4.address.ip)
-                    if candidate.primary_ip4_id else None
-                )
-                if candidate_ip == result.address:
-                    return candidate
         return None
 
     @staticmethod
@@ -610,6 +606,7 @@ class DiscoveryService:
 
     @transaction.atomic
     def _upsert_device(self, target, result):
+        result.serial = result.serial.strip()
         role = (
             DeviceRole.objects.filter(name=self.role_name).first()
             or DeviceRole.objects.get(slug=self.role_name)
@@ -671,13 +668,11 @@ class DiscoveryService:
             device.name = result.name
             device.device_type = device_type
             device.tenant = target.prefix.tenant
+            device.status = "active"
             if result.serial:
                 device.serial = result.serial
         device.full_clean()
         device.save()
-        discovery_tag = Tag.objects.filter(name="discovery").first()
-        if discovery_tag:
-            device.tags.add(discovery_tag)
 
         interfaces_by_index = {}
         for index, name in result.interfaces.items():
