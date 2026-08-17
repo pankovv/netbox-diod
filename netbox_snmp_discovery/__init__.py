@@ -5,10 +5,10 @@ class SNMPDiscoveryConfig(PluginConfig):
     name = "netbox_snmp_discovery"
     verbose_name = "SNMP Discovery"
     description = "Discover NetBox IP addresses and devices with SNMPv3"
-    version = "0.3.6"
+    version = "0.4.0"
     base_url = "snmp-discovery"
-    min_version = "4.3.0"
-    max_version = "4.3.99"
+    min_version = "4.6.0"
+    max_version = "4.6.99"
     required_settings = ("encryption_key",)
     default_settings = {
         "ping_timeout": 2,

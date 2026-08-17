@@ -1,6 +1,6 @@
 # NetBox SNMP Discovery
 
-A NetBox 4.3 plugin that checks existing IP addresses and discovers devices
+A NetBox 4.6 plugin that checks existing IP addresses and discovers devices
 with SNMPv3.
 
 ## Workflow
@@ -35,7 +35,7 @@ NetBox configuration, separately from the database.
 
 ```bash
 sudo /opt/netbox/venv/bin/pip install \
-  git+https://github.com/pankovv/netbox-diod.git
+  git+https://github.com/pankovv/netbox-snmp-discover.git
 ```
 
 Generate an encryption key once:
@@ -87,7 +87,7 @@ sudo systemctl restart netbox netbox-rq
 1. Create the device role `net_automate` (or change `device_role`).
 2. Add the exact, case-sensitive tag `discovery` to target prefixes.
 3. Set a tenant on each target prefix.
-4. In NetBox 4.3, set the prefix Scope Type to **Site** and select a Site.
+4. In NetBox 4.6, set the prefix Scope Type to **Site** and select a Site.
 5. Create the IP addresses to check inside those prefixes. The plugin
    intentionally does not generate every host address in a subnet.
 6. Grant users the plugin permissions for SNMP credentials and discovery runs.
