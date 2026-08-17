@@ -150,7 +150,7 @@ class DiscoveryService:
                 continue
             if not isinstance(prefix.scope, Site):
                 self.log(
-                    "Skipped: Prefix scope must be a Site in NetBox 4.3.",
+                    "Skipped: Prefix scope must be a Site in NetBox 4.6.",
                     "error", prefix.prefix,
                 )
                 continue
